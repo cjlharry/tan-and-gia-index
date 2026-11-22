@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-[#0f172a]">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cross-Market Sentiment & Technical Monitor — US vs China/HK</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .card { background:#111c33; border:1px solid #1e293b; border-radius:0.75rem; }
+  .src { font-size:10px; color:#64748b; }
+  .src a { color:#7dd3fc; text-decoration:underline dotted; }
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { color:#e2e8f0; }
+  .hidden-view { display:none !important; }
+</style>
+</head>
+<body class="text-slate-200 min-h-screen">
+<div class="max-w-7xl mx-auto p-3 md:p-6 space-y-4">
+
+  <!-- ============ 1. HEADER & CONTROLS ============ -->
+  <header class="card p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+    <div>
+      <h1 class="text-lg md:text-xl font-semibold tracking-tight">Cross-Market Sentiment & Technical Monitor</h1>
+      <p class="text-xs text-slate-400">US Equities vs China / Hong Kong Equities · Fear & Greed · 14-day RSI (Wilder)</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 text-xs">
+      <span id="modeBadge" class="px-2 py-1 rounded-full border"></span>
+      <select id="viewSel" class="bg-slate-900 border border-slate-700 rounded px-2 py-1">
+        <option value="all">Combined Comparison</option>
+        <option value="US">US Market</option>
+        <option value="CN">China / HK Market</option>
+      </select>
+      <div id="tfGroup" class="flex rounded overflow-hidden border border-slate-700">
+        <button data-tf="1" class="px-2 py-1">1D</button>
+        <button data-tf="7" class="px-2 py-1">7D</button>
+        <button data-tf="30" class="px-2 py-1">30D</button>
+      </div>
+      <span class="text-slate-400">Data as of: <span id="lastUpdated" class="mono"></span></span>
+    </div>
+  </header>
+
+  <p id="snapLog" class="src px-1"></p>
+
+  <!-- ============ 2. FEAR & GREED GAUGES ============ -->
+  <section class="grid md:grid-cols-2 gap-4">
+    <div class="card p-4" data-market="US">
+      <div class="flex justify-between items-start">
+        <h2 class="font-semibold">US Market · Fear & Greed</h2>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-sky-900/40 text-sky-300">Published index</span>
+      </div>
+      <div class="relative h-40 mt-2"><canvas id="gaugeUS"></canvas>
+        <div class="absolute inset-x-0 bottom-1 text-center">
+          <div id="usScore" class="text-3xl font-bold mono"></div><div id="usZone" class="text-xs font-semibold"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="usMetrics"></div>
+      <p class="src mt-3" id="usSrc"></p>
+    </div>
+    <div class="card p-4" data-market="CN">
+      <div class="flex justify-between items-start">
+        <h2 class="font-semibold">China / HK Market · Fear & Greed</h2>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-amber-900/40 text-amber-300">Derived composite</span>
+      </div>
+      <div class="relative h-40 mt-2"><canvas id="gaugeCN"></canvas>
+        <div class="absolute inset-x-0 bottom-1 text-center">
+          <div id="cnScore" class="text-3xl font-bold mono"></div><div id="cnZone" class="text-xs font-semibold"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="cnMetrics"></div>
+      <p class="src mt-3" id="cnSrc"></p>
+    </div>
+  </section>
+
+  <!-- ============ 3. RSI MONITOR TABLE ============ -->
+  <section class="card p-4">
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+      <h2 class="font-semibold">Major ETF Indices · 14-Day RSI Monitor</h2>
+      <span class="src">Click a column header to sort. Each row links to its source. "—" = not available in this snapshot.</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="sortable text-left py-2 pr-2" data-k="ticker">Ticker</th>
+            <th class="sortable text-left pr-2" data-k="name">Index / ETF</th>
+            <th class="sortable text-left pr-2" data-k="market">Mkt</th>
+            <th class="sortable text-right pr-2" data-k="price">Last</th>
+            <th class="sortable text-right pr-2" data-k="chg">1D %</th>
+            <th class="sortable text-left pr-2 min-w-[180px]" data-k="rsi">14D RSI</th>
+            <th class="text-left pr-2">Signal</th>
+            <th class="text-left">Source / as of</th>
+          </tr>
+        </thead>
+        <tbody id="rsiBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 4. CHARTS ============ -->
+  <section class="grid md:grid-cols-2 gap-4">
+    <div class="card p-4">
+      <h2 class="font-semibold">Fear & Greed Trend</h2>
+      <div class="h-64 mt-2"><canvas id="trendChart"></canvas></div>
+      <p class="src mt-2" id="trendNote"></p>
+    </div>
+    <div class="card p-4">
+      <h2 class="font-semibold">ETF 14-Day RSI Comparison</h2>
+      <div class="h-64 mt-2"><canvas id="rsiChart"></canvas></div>
+      <p class="src mt-2">Dashed lines: 30 (oversold) and 70 (overbought). ETFs without an RSI value are omitted rather than estimated.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. HEADLINES & CATALYSTS ============ -->
+  <section class="grid md:grid-cols-2 gap-4">
+    <div class="card p-4">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-semibold">Cross-Market Headline Feed</h2>
+        <div id="newsFilter" class="flex text-xs rounded overflow-hidden border border-slate-700">
+          <button data-f="all" class="px-2 py-1">All</button>
+          <button data-f="US" class="px-2 py-1">US</button>
+          <button data-f="CN" class="px-2 py-1">China/HK</button>
+        </div>
+      </div>
+      <ul id="newsList" class="space-y-2"></ul>
+      <p class="src mt-2">Sentiment score = (positive − negative lexicon hits) / total hits, computed in-browser from the headline text (word list in <span class="mono">SENTIMENT_LEXICON</span>). It is a crude text signal, not an analyst rating.</p>
+    </div>
+    <div class="space-y-4">
+      <div class="card p-4">
+        <h2 class="font-semibold mb-2">Key Drivers (as reported)</h2>
+        <ul id="drivers" class="space-y-2 text-sm"></ul>
+      </div>
+      <div class="card p-4">
+        <h2 class="font-semibold mb-2">Upcoming Catalysts</h2>
+        <ul id="catalysts" class="space-y-1 text-sm"></ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="src text-center pb-4">
+    Data from third-party public sources (linked on each figure); it may be delayed, incomplete or wrong, so verify against the original source before relying on it. The China/HK score and headline scores are derived heuristics, not published indices. Not affiliated with any data provider. For information only; not investment advice. Code under the MIT License.
+  </footer>
+</div>
+
+<!-- Optional daily snapshot written by update_snapshot.py; the page works without it -->
+<script src="snapshot-data.js" onerror="window.SNAPSHOT=undefined"></script>
+<script>
+/* =====================================================================
+   DATA_CONFIG — every value carries its source URL and as-of date.
+   Snapshot = closes of Fri 20 Nov 2026 (US) / Fri 20 Nov 2026 (HK).
+   Replace or extend freely; the UI renders whatever is here.
+   ===================================================================== */
+const DATA_CONFIG = {
+  snapshotAsOf: '2026-11-20',
+  us: {
+    fearGreed: { value: 10, asOf: '2026-11-20 close', label: 'CNN Business Fear & Greed',
+      src: 'https://www.finhacker.cz/en/fear-and-greed-index-historical-data-and-chart/',
+      note: 'End-of-day value tracked from CNN. Intraday prints that day: 14 (TokenPost), 9.7 (Kobeissi Letter via 24/7 Wall St).' },
+    vix: { value: 35.89, chgPct: 26.20, asOf: '2026-11-20', src: 'https://www.marketcalls.in/futures-and-options/weekly-market-roundup-21-november-2026.html' },
+    putCall: { value: null, asOf: null, src: 'https://www.cboe.com/us/options/market_statistics/daily/',
+      note: 'Not in built-in snapshot; filled by update_snapshot.py (CNN component).' },
+    // CNN Fear & Greed history (sparse, each point sourced)
+    history: [
+      { d: '2026-11-03', v: 24, src: 'https://www.benzinga.com/node/62903627' },
+      { d: '2026-11-04', v: 27, src: 'https://www.benzinga.com/node/62903627' },
+      { d: '2026-11-05', v: 20, src: 'https://www.aktiespararna.se/nyheter/fear-greed-index-indikerar-extrem-radsla-i-marknaden-efter-wall-street-raset' },
+      { d: '2026-11-13', v: 37, src: 'https://cryptonews.net/news/analytics/33785428/' },
+      { d: '2026-11-20', v: 10, src: 'https://www.finhacker.cz/en/fear-and-greed-index-historical-data-and-chart/' },
+    ],
+  },
+
+  cn: {
+    // No official China/HK Fear & Greed index exists. The composite below is derived
+    // transparently from published inputs (see computeCnComposite()).
+    hsi52wHigh: { value: 28056.10, src: 'https://www.bbntimes.com/financial/hong-kong-stock-exchange-hang-seng-index-slides-to-22-410-80-amid-us-iran-negotiations' },
+    hsiCloses: [
+      { d: '2026-10-21', v: 23651.00, src: 'https://news.rthk.hk/rthk/en/component/k2/1874799-20261021.htm' },
+      { d: '2026-11-12', v: 24008.55, src: 'https://www.itiger.com/news/1191446230' },
+      { d: '2026-11-13', v: 23637.60, src: 'https://www.chinadailyhk.com/article/642672' },
+      { d: '2026-11-18', v: 23294.80, src: 'https://finance.yahoo.com/quote/%5EHSI/' },
+      { d: '2026-11-19', v: 22841.62, src: 'https://www.businesstoday.com.my/2026/11/21/hong-kong-stocks-sink-1-89-as-hang-seng-enters-bear-market/', note: '22,410.80 + 430.82' },
+      { d: '2026-11-20', v: 22410.80, src: 'https://www.bastillepost.com/global/article/6382211-hong-kong-stocks-close-lower-friday-12' },
+    ],
+    vhsi: { value: 19.08, chgPct: -8.14, asOf: '2026-11-10', src: 'https://www.hsi.com.hk/eng/indexes/all-indexes/volatilityindex' },
+    southbound: { valueHKDbn: 11.812, asOf: '2026-11-20', src: 'https://longbridge.com/en/news/306254321',
+      note: 'Net buying concentrated in Tracker Fund (2800), 2828 and 3033.' },
+    hstech: { value: 3511.14, chgPct: -3.78, asOf: '2026-11-20', src: 'https://www.bastillepost.com/global/article/6382211-hong-kong-stocks-close-lower-friday-12' },
+  },
+
+  etfs: [
+    { ticker:'SPY', name:'SPDR S&P 500', market:'US', price:689.81, chg:-3.64, rsi:24.42, asOf:'2026-11-20',
+      src:'https://wallstreetnumbers.com/etfs/spy/rsi', srcName:'StockAnalysis / WallStreetNumbers',
+      note:'RSI differs by provider: Investing.com 19.33, TradingSystemReport ~25.' },
+    { ticker:'QQQ', name:'Invesco QQQ (Nasdaq 100)', market:'US', price:608.45, chg:-5.67, rsi:null, asOf:'2026-11-20',
+      src:'https://stockanalysis.com/etf/qqq/history/', srcName:'StockAnalysis',
+      note:'No end-of-day 14D RSI found; last published: 33.98 on Nov 19 (Investing.com).' },
+    { ticker:'IWM', name:'iShares Russell 2000', market:'US', price:256.59, chg:-2.88, rsi:null, asOf:'2026-11-20', derived:true,
+      src:'https://www.stocktitan.net/articles/stock-market-today-live-november-20-2026', srcName:'StockTitan + The Weekend Spread',
+      note:'Price computed: Nov 19 close $264.20 × (1 − 2.88%).' },
+    { ticker:'DIA', name:'SPDR Dow Jones', market:'US', price:481.05, chg:-1.98, rsi:null, asOf:'2026-11-20', derived:true,
+      src:'https://www.stocktitan.net/articles/stock-market-today-live-november-20-2026', srcName:'StockTitan + The Weekend Spread',
+      note:'Price computed: Nov 19 close $490.77 × (1 − 1.98%).' },
+    { ticker:'2800.HK', name:'Tracker Fund of HK (HSI)', market:'CN', price:22.54, chg:-1.74, rsi:null, asOf:'2026-11-20', ccy:'HK$',
+      src:'https://longbridge.com/en/news/306244144', srcName:'Longbridge ETF Daily' },
+    { ticker:'3033.HK', name:'CSOP Hang Seng TECH', market:'CN', price:3.438, chg:-3.59, rsi:null, asOf:'2026-11-20', ccy:'HK$',
+      src:'https://longbridge.com/en/news/306244144', srcName:'Longbridge ETF Daily' },
+    { ticker:'FXI', name:'iShares China Large-Cap', market:'CN', price:31.23, chg:null, rsi:null, asOf:'~2026-11-20',
+      src:'https://hellostake.com/au/blog/trending/what-are-best-chinese-etfs-to-invest-in', srcName:'Stake (secondary)' },
+    { ticker:'KWEB', name:'KraneShares CSI China Internet', market:'CN', price:20.72, chg:-2.77, rsi:23.78, asOf:'2026-11-20',
+      src:'https://finviz.com/stock?t=KWEB', srcName:'Finviz' },
+  ],
+
+  headlines: [
+    { m:'US', t:"Markets' November Nightmare Keeps Getting Worse", s:'Charles Schwab', d:'2026-11-20', u:'https://www.schwab.com/learn/story/market-volatility' },
+    { m:'US', t:'The S&P 500 Is Now Below Every Wall Street Year-End Target for 2026', s:'24/7 Wall St.', d:'2026-11-21', u:'https://247wallst.com/investing/2026/11/21/the-sp-500-is-now-below-every-wall-street-year-end-target-for-2026/' },
+    { m:'US', t:'The Nasdaq-100 Is Now Just 49 Points From a Bear Market', s:'24/7 Wall St.', d:'2026-11-21', u:'https://247wallst.com/investing/2026/11/21/the-nasdaq-100-is-now-just-49-points-from-a-bear-market/' },
+    { m:'US', t:"Wall Street's Fear Index Just Hit 9.7. History Says the S&P 500 Could Rally 10.5% in 3 Weeks", s:'24/7 Wall St.', d:'2026-11-21', u:'https://247wallst.com/investing/2026/11/21/wall-streets-fear-index-just-hit-9-7-history-says-the-sp-500-could-rally-10-5-in-3-weeks/' },
+    { m:'CN', t:'Hong Kong Stocks Sink 1.89% As Hang Seng Enters Bear Market', s:'Business Today (MY)', d:'2026-11-21', u:'https://www.businesstoday.com.my/2026/11/21/hong-kong-stocks-sink-1-89-as-hang-seng-enters-bear-market/' },
+    { m:'CN', t:'Hong Kong Stocks on Verge of Bear Market, Plunging Over 1,200 Points for the Week', s:'Longbridge', d:'2026-11-20', u:'https://longbridge.com/en/news/306315854' },
+    { m:'CN', t:'Mainland Funds Record Net Purchases of HK$11.812 Billion; Hang Seng Index Hits 18-Month Low', s:'Longbridge', d:'2026-11-20', u:'https://longbridge.com/en/news/306254321' },
+    { m:'CN', t:'Southbound trading hits six-month high! Southbound capital buys over HKD 23.4 billion in a single day', s:'Futu News', d:'2026-11-03', u:'https://news.futunn.com/en/post/1003249794/southbound-trading-hits-six-month-high-southbound-capital-buys-over' },
+  ],
+
+  drivers: [
+    { m:'US', dir:'bear', t:'Doubts over AI build-out financing and a slide in Anthropic shares after its IPO drove a tech sell-off; Nasdaq Composite −5.28% on Nov 20 and negative for 2026.', u:'https://www.schwab.com/learn/story/market-volatility' },
+    { m:'US', dir:'bear', t:'S&P 500 −3.70% to 6,910.39; seven-session losing streak; S&P and Dow both >10% below records (correction).', u:'https://noctaaa.substack.com/p/daily-brief-saturday-21-november-2026' },
+    { m:'US', dir:'bull', t:'Contrarian reading: past sub-10 CNN Fear & Greed prints have tended to occur near the end of sell-offs (small sample, n=3).', u:'https://247wallst.com/investing/2026/11/21/wall-streets-fear-index-just-hit-9-7-history-says-the-sp-500-could-rally-10-5-in-3-weeks/' },
+    { m:'CN', dir:'bear', t:'HSI closed 22,410.80, ~20% below its 29 Jan peak (bear-market threshold); HS TECH fell for an eighth straight session.', u:'https://www.bbntimes.com/financial/hong-kong-stock-exchange-hang-seng-index-slides-to-22-410-80-amid-us-iran-negotiations' },
+    { m:'CN', dir:'bull', t:'Southbound investors bought a net HK$11.8 bn on Nov 20, mostly index ETFs (2800, 2828, 3033).', u:'https://longbridge.com/en/news/306254321' },
+  ],
+
+  catalysts: [
+    { m:'US', d:'2026-11-25', t:'US PCE inflation release (BEA)', u:'https://www.regardsofwallstreet.com/news/december-2026-fed-meeting-dates-hike-odds' },
+    { m:'CN', d:'2026-11-27', t:'China industrial profits (Oct)', u:'https://tradingeconomics.com/china/calendar/1001' },
+    { m:'CN', d:'2026-11-30', t:'China NBS official PMIs (Nov)', u:'https://tradingeconomics.com/china/calendar/1001' },
+    { m:'US', d:'2026-12-04', t:'US Employment Situation (Nov), BLS', u:'https://news.ifyouspent.com/en/news/fed-december-2026-meeting-jobs-cpi-what-to-watch' },
+    { m:'US', d:'2026-12-09', t:'FOMC decision 2:00 pm ET + SEP (meeting Dec 8–9)', u:'https://www.federalreserve.gov/newsevents/2026-december.htm' },
+    { m:'US', d:'2026-12-10', t:'US CPI (Nov), BLS', u:'https://news.ifyouspent.com/en/news/fed-december-2026-meeting-jobs-cpi-what-to-watch' },
+    { m:'CN', d:'2026-12-15', t:'China NBS national economic performance (Nov activity data)', u:'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html' },
+    { m:'US', d:'2026-12-23', t:'US PCE inflation (Nov), BEA', u:'https://fedratecalc.com/us-economic-calendar/december-2026/' },
+  ],
+};
+
+const SENTIMENT_LEXICON = {
+  pos: ['rally','rebound','rebounds','gain','gains','buy','buys','buying','purchases','inflow','high','record','surge','improves','recover'],
+  neg: ['sink','sinks','fall','falls','fell','plunge','plunging','drop','drops','bear','crash','fear','nightmare','worse','below','low','selloff','sell-off','cracks','slide','slides','tumbles'],
+};
+
+/* ============================ STATE ============================ */
+const state = { view:'all', tf:30, news:'all', sortKey:'ticker', sortDir:1, snapshot:null };
+const charts = {};
+const C = { em:'#10b981', rose:'#f43f5e', amber:'#f59e0b', slate:'#64748b', sky:'#38bdf8', grid:'#1e293b', txt:'#94a3b8' };
+
+/* ============================ HELPERS ============================ */
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d=2) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits:d, maximumFractionDigits:d });
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const link = (u, label) => `<a href="${u}" target="_blank" rel="noopener">${label}</a>`;
+function store(k, v) { try { v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k, v); return v; } catch { return null; } }
+
+function zone(score) {
+  if (score === null) return { label:'n/a', color:C.slate };
+  if (score < 25) return { label:'Extreme Fear', color:C.rose };
+  if (score < 45) return { label:'Fear', color:'#fb7185' };
+  if (score <= 55) return { label:'Neutral', color:C.amber };
+  if (score < 75) return { label:'Greed', color:'#34d399' };
+  return { label:'Extreme Greed', color:C.em };
+}
+function rsiSignal(r) {
+  if (r === null) return { label:'No data', cls:'bg-slate-800 text-slate-400', color:C.slate };
+  if (r < 30) return { label:'Oversold', cls:'bg-emerald-900/50 text-emerald-300', color:C.em };
+  if (r > 70) return { label:'Overbought', cls:'bg-rose-900/50 text-rose-300', color:C.rose };
+  return { label:'Neutral', cls:'bg-amber-900/40 text-amber-300', color:C.amber };
+}
+
+/* Wilder's 14-period RSI from oldest→newest closes */
+function wilderRSI(closes, n = 14) {
+  if (!closes || closes.length < n + 1) return null;
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) { const d = closes[i] - closes[i-1]; d >= 0 ? g += d : l -= d; }
+  g /= n; l /= n;
+  for (let i = n + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    g = (g * (n - 1) + Math.max(d, 0)) / n;
+    l = (l * (n - 1) + Math.max(-d, 0)) / n;
+  }
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+
+/* China/HK composite (no official index exists):
+   momentum  = 100 × (1 + drawdown/0.20), clamped 0–100  → 0% from 52w high = 100, −20% = 0
+   volatility= 100 × (35 − VHSI)/20, clamped 0–100       → VHSI 15 = 100, 35 = 0
+   A component is used only if its as-of date is within 2 days of the scoring date. */
+function computeCnComposite(dateStr, hsiClose, useVol = true) {
+  const cn = DATA_CONFIG.cn, parts = [];
+  const dd = hsiClose / cn.hsi52wHigh.value - 1;
+  parts.push({ name:'HSI drawdown', score: clamp(100 * (1 + dd / 0.20), 0, 100), raw: `${(dd*100).toFixed(1)}%` });
+  const ageDays = (new Date(dateStr) - new Date(cn.vhsi.asOf)) / 864e5;
+  if (useVol && cn.vhsi.value !== null && Math.abs(ageDays) <= 2)
+    parts.push({ name:'VHSI', score: clamp(100 * (35 - cn.vhsi.value) / 20, 0, 100), raw: cn.vhsi.value });
+  const score = parts.reduce((s, p) => s + p.score, 0) / parts.length;
+  return { score, parts };
+}
+
+/* ============================ RENDER: GAUGES ============================ */
+function gauge(canvasId, score) {
+  const z = zone(score);
+  const cfg = {
+    type:'doughnut',
+    data:{ datasets:[
+      { data:[25,20,11,19,25], backgroundColor:[C.rose,'#fb7185',C.amber,'#34d399',C.em], borderWidth:0, weight:0.25 },
+      { data: score === null ? [0,100] : [score, 100 - score], backgroundColor:[z.color,'#1e293b'], borderWidth:0, weight:1 },
+    ]},
+    options:{ rotation:-90, circumference:180, cutout:'62%', maintainAspectRatio:false, animation:{duration:400},
+      plugins:{ legend:{display:false}, tooltip:{enabled:false} } },
+  };
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart($(canvasId), cfg);
+}
+function metric(label, value, sub, src) {
+  return `<div class="bg-slate-900/60 rounded p-2"><div class="text-[11px] text-slate-400">${label}</div>
+    <div class="mono font-semibold">${value}</div><div class="src">${sub || ''}${src ? ' · ' + link(src, 'source') : ''}</div></div>`;
+}
+const pct = (v) => v === null || v === undefined ? '' : `<span class="${v >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${v >= 0 ? '+' : ''}${fmt(v)}%</span>`;
+
+function renderGauges() {
+  const us = DATA_CONFIG.us, cn = DATA_CONFIG.cn;
+  const usV = us.fearGreed.value, uz = zone(usV);
+  gauge('gaugeUS', usV);
+  $('usScore').textContent = usV ?? '—'; $('usZone').textContent = uz.label; $('usZone').style.color = uz.color;
+  $('usMetrics').innerHTML =
+    metric('CBOE VIX', fmt(us.vix.value), `${pct(us.vix.chgPct)} · ${us.vix.asOf}`, us.vix.src) +
+    metric('CBOE equity put/call', fmt(us.putCall.value, 3), `${us.putCall.asOf || ''} ${us.putCall.note || ''}`, us.putCall.src);
+  const comp = us.fearGreed.components ? Object.entries(us.fearGreed.components)
+    .map(([k, c]) => `${k.replace(/_/g, ' ')}: ${Math.round(c.score)} (${c.rating})`).join(' · ') : '';
+  $('usSrc').innerHTML = `${us.fearGreed.label}, ${us.fearGreed.asOf} · ${link(us.fearGreed.src, 'source')}. ${us.fearGreed.note}${comp ? `<br>Components: ${comp}` : ''}`;
+
+  const last = cn.hsiCloses[cn.hsiCloses.length - 1];
+  const dd = last.v / cn.hsi52wHigh.value - 1;
+  let score, method;
+  if (cn.sentiment) {                                   // CNN-style derived score (from update_snapshot.py)
+    score = cn.sentiment.v;
+    method = `${cn.sentiment.method}. Inputs: ${cn.sentiment.parts.map(p => `${p.name} ${p.score.toFixed(0)} × ${p.weight}`).join(', ')}. As of ${cn.sentiment.d} · ${link(cn.sentiment.src, 'CNN method reference')}. Southbound flow shown for context, not scored.`;
+  } else {                                              // built-in fallback (no 5-year history available)
+    const c = computeCnComposite(last.d, last.v); score = c.score;
+    method = `Fallback composite of ${c.parts.length}/2 fresh inputs (${c.parts.map(p => `${p.name} → ${p.score.toFixed(0)}`).join(', ')}); formula in <span class="mono">computeCnComposite()</span>. Run update_snapshot.py for the full CNN-style score.`;
+  }
+  const cz = zone(score);
+  gauge('gaugeCN', score);
+  $('cnScore').textContent = Math.round(score); $('cnZone').textContent = cz.label; $('cnZone').style.color = cz.color;
+  const vAge = Math.round((new Date(last.d) - new Date(cn.vhsi.asOf)) / 864e5);
+  const sb = cn.southbound;
+  const sbVal = sb.fiveDay100m !== undefined ? `${fmt(sb.fiveDay100m, 1)} 亿 (5d)` : `HK$${fmt(sb.valueHKDbn)} bn`;
+  const sbSub = sb.daily100m !== undefined ? `day ${fmt(sb.daily100m, 1)} 亿 · ${sb.asOf}` : sb.asOf;
+  $('cnMetrics').innerHTML =
+    metric('HSI Volatility (VHSI)', fmt(cn.vhsi.value), `${pct(cn.vhsi.chgPct)} · ${cn.vhsi.asOf}${vAge > 5 ? ' <span class="text-amber-400">(stale)</span>' : ''}`, cn.vhsi.src) +
+    metric('Southbound net buy', sbVal, sbSub, sb.src) +
+    metric('Hang Seng Index', fmt(last.v), `${last.d} · ${(dd * 100).toFixed(1)}% vs 52w high`, last.src) +
+    metric('Hang Seng TECH', fmt(cn.hstech.value), `${pct(cn.hstech.chgPct)} · ${cn.hstech.asOf}`, cn.hstech.src);
+  $('cnSrc').innerHTML = `${method} 52w high ${fmt(cn.hsi52wHigh.value)} · ${link(cn.hsi52wHigh.src, 'source')}. No official China/HK Fear & Greed index exists.`;
+}
+
+/* ============================ RENDER: RSI TABLE ============================ */
+function renderTable() {
+  const rows = DATA_CONFIG.etfs.filter(e => state.view === 'all' || e.market === state.view).slice()
+    .sort((a, b) => {
+      const x = a[state.sortKey], y = b[state.sortKey];
+      if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
+      return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
+    });
+  $('rsiBody').innerHTML = rows.map(e => {
+    const s = rsiSignal(e.rsi);
+    const meter = e.rsi === null ? '<span class="text-slate-500">—</span>' : `
+      <div class="flex items-center gap-2"><span class="mono w-10 text-right">${fmt(e.rsi,1)}</span>
+        <div class="relative flex-1 h-2 rounded bg-slate-800">
+          <div class="absolute inset-y-0 left-0 rounded" style="width:${e.rsi}%;background:${s.color}"></div>
+          <div class="absolute inset-y-[-3px] w-px bg-slate-400" style="left:30%"></div>
+          <div class="absolute inset-y-[-3px] w-px bg-slate-400" style="left:70%"></div>
+        </div></div>`;
+    return `<tr class="border-b border-slate-800/80 align-top">
+      <td class="py-2 pr-2 mono font-semibold">${e.ticker}</td>
+      <td class="pr-2 text-slate-300">${e.name}</td>
+      <td class="pr-2"><span class="text-[10px] px-1.5 py-0.5 rounded ${e.market === 'US' ? 'bg-sky-900/50 text-sky-300' : 'bg-red-900/40 text-red-300'}">${e.market === 'US' ? 'US' : 'CN/HK'}</span></td>
+      <td class="pr-2 text-right mono">${e.ccy || '$'}${fmt(e.price, e.price < 10 ? 3 : 2)}${e.derived ? '<sup class="text-amber-400">*</sup>' : ''}</td>
+      <td class="pr-2 text-right mono">${e.chg === null ? '—' : pct(e.chg)}</td>
+      <td class="pr-2">${meter}</td>
+      <td class="pr-2"><span class="text-[11px] px-2 py-0.5 rounded ${s.cls}">${s.label}</span></td>
+      <td class="src">${link(e.src, e.srcName)} · ${e.asOf}${e.note ? `<br>${e.note}` : ''}</td></tr>`;
+  }).join('');
+}
+
+/* ============================ RENDER: CHARTS ============================ */
+const axisOpts = { ticks:{ color:C.txt, font:{size:10} }, grid:{ color:C.grid } };
+
+function renderTrend() {
+  const end = new Date(DATA_CONFIG.snapshotAsOf), days = state.tf;
+  const inWin = (d) => (end - new Date(d)) / 864e5 <= (days === 1 ? 1.5 : days);
+  const us = DATA_CONFIG.us.history.filter(p => inWin(p.d));
+  const cnSrc = DATA_CONFIG.cn.sentiment?.history || DATA_CONFIG.cn.hsiCloses.map(p => ({ d:p.d, v: computeCnComposite(p.d, p.v, false).score }));
+  const cn = cnSrc.filter(p => inWin(p.d));
+  const labels = [...new Set([...us, ...cn].map(p => p.d))].sort();
+  const series = (arr) => labels.map(l => { const p = arr.find(q => q.d === l); return p ? +p.v.toFixed(1) : null; });
+  const ds = [];
+  if (state.view !== 'CN') ds.push({ label:'US (CNN F&G)', data:series(us), borderColor:C.sky, backgroundColor:C.sky, spanGaps:true, tension:0.25, pointRadius:4 });
+  if (state.view !== 'US') ds.push({ label:'China/HK (derived)', data:series(cn), borderColor:C.rose, backgroundColor:C.rose, spanGaps:true, tension:0.25, pointRadius:4, borderDash:[4,3] });
+  if (charts.trend) charts.trend.destroy();
+  charts.trend = new Chart($('trendChart'), {
+    type:'line', data:{ labels: labels.map(l => l.slice(5)), datasets:ds },
+    options:{ maintainAspectRatio:false, scales:{ x:axisOpts, y:{ ...axisOpts, min:0, max:100 } },
+      plugins:{ legend:{ labels:{ color:C.txt, boxWidth:10 } } } },
+  });
+  $('trendNote').textContent = `Only dates with a sourced observation are plotted (lines bridge gaps). ${DATA_CONFIG.cn.sentiment ? 'China/HK: CNN-style derived score (momentum, strength, volatility; 1-year percentiles).' : 'China/HK: fallback HSI-drawdown input only.'} Window: ${days === 1 ? 'last 1 day' : `last ${days} days`} to ${DATA_CONFIG.snapshotAsOf}.`;
+}
+
+const thresholdLines = { id:'thr', afterDatasetsDraw(c) {
+  const { ctx, chartArea:a, scales:{ x } } = c; ctx.save(); ctx.setLineDash([5,4]); ctx.lineWidth = 1;
+  [[30, C.em], [70, C.rose]].forEach(([v, col]) => { const px = x.getPixelForValue(v); ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); });
+  ctx.restore(); } };
+
+function renderRsiChart() {
+  const rows = DATA_CONFIG.etfs.filter(e => e.rsi !== null && (state.view === 'all' || e.market === state.view));
+  if (charts.rsi) charts.rsi.destroy();
+  charts.rsi = new Chart($('rsiChart'), {
+    type:'bar', plugins:[thresholdLines],
+    data:{ labels: rows.map(r => r.ticker), datasets:[{ data: rows.map(r => +r.rsi.toFixed(1)), backgroundColor: rows.map(r => rsiSignal(r.rsi).color), borderRadius:3, barThickness:16 }] },
+    options:{ indexAxis:'y', maintainAspectRatio:false, scales:{ x:{ ...axisOpts, min:0, max:100 }, y:axisOpts },
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(i) => `RSI ${i.raw}` } } } },
+  });
+}
+
+/* ============================ RENDER: NEWS & CATALYSTS ============================ */
+function headlineScore(t) {
+  const w = t.toLowerCase().replace(/[^a-z\- ]/g, ' ').split(/\s+/);
+  const p = w.filter(x => SENTIMENT_LEXICON.pos.includes(x)).length, n = w.filter(x => SENTIMENT_LEXICON.neg.includes(x)).length;
+  return p + n === 0 ? 0 : (p - n) / (p + n);
+}
+function renderNews() {
+  const list = DATA_CONFIG.headlines.filter(h => (state.news === 'all' || h.m === state.news) && (state.view === 'all' || h.m === state.view));
+  $('newsList').innerHTML = list.map(h => {
+    const s = headlineScore(h.t), lab = s > 0.15 ? 'Bullish' : s < -0.15 ? 'Bearish' : 'Neutral';
+    const cls = s > 0.15 ? 'bg-emerald-900/50 text-emerald-300' : s < -0.15 ? 'bg-rose-900/50 text-rose-300' : 'bg-amber-900/40 text-amber-300';
+    return `<li class="bg-slate-900/60 rounded p-2 flex justify-between gap-2">
+      <div><a href="${h.u}" target="_blank" rel="noopener" class="text-sm hover:underline">${h.t}</a>
+      <div class="src">${h.s} · ${h.d} · ${h.m === 'US' ? 'US' : 'China/HK'}</div></div>
+      <span class="shrink-0 self-start text-[11px] mono px-2 py-0.5 rounded ${cls}">${s >= 0 ? '+' : ''}${s.toFixed(2)} ${lab}</span></li>`;
+  }).join('') || '<li class="text-slate-500 text-sm">No headlines for this filter.</li>';
+}
+function renderSide() {
+  const v = (x) => state.view === 'all' || x.m === state.view;
+  $('drivers').innerHTML = DATA_CONFIG.drivers.filter(v).map(d => `<li class="flex gap-2">
+    <span class="shrink-0 mt-0.5 text-[10px] px-1.5 rounded h-fit ${d.dir === 'bull' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-rose-900/50 text-rose-300'}">${d.dir === 'bull' ? '▲' : '▼'} ${d.m === 'US' ? 'US' : 'CN/HK'}</span>
+    <span>${d.t} <span class="src">${link(d.u, 'source')}</span></span></li>`).join('');
+  const t = new Date(), today = Date.UTC(t.getFullYear(), t.getMonth(), t.getDate());
+  $('catalysts').innerHTML = DATA_CONFIG.catalysts.filter(v).map(c => {
+    const days = Math.round((Date.parse(c.d) - today) / 864e5);
+    const when = days < 0 ? 'passed' : days === 0 ? 'today' : `in ${days}d`;
+    return `<li class="flex justify-between gap-2 border-b border-slate-800/70 py-1 ${days < 0 ? 'opacity-40' : ''}">
+      <span><span class="mono text-slate-400">${c.d.slice(5)}</span> · ${c.t} <span class="src">${link(c.u, 'source')}</span></span>
+      <span class="shrink-0 text-[10px] text-slate-400">${c.m === 'US' ? 'US' : 'CN'} · ${when}</span></li>`;
+  }).join('');
+}
+
+/* ============================ DAILY SNAPSHOT MERGE ============================
+   window.SNAPSHOT comes from snapshot-data.js (update_snapshot.py). Any block it
+   provides replaces the built-in value; anything missing keeps the built-in value. */
+function applySnapshot(S) {
+  if (!S) return;
+  const us = DATA_CONFIG.us, cn = DATA_CONFIG.cn, U = S.us || {}, N = S.cn || {};
+  if (U.fearGreed) {
+    Object.assign(us.fearGreed, { value:U.fearGreed.value, asOf:U.fearGreed.asOf, src:U.fearGreed.src, label:'CNN Business Fear & Greed',
+      note:'Via fear-greed (PyPI) from CNN.', components:U.fearGreed.components });
+    if (U.fearGreed.history?.length) us.history = U.fearGreed.history.map(p => ({ ...p, src:U.fearGreed.src }));
+  }
+  if (U.vix) us.vix = U.vix;
+  if (U.putCall) us.putCall = U.putCall;
+  if (N.hsiCloses?.length) cn.hsiCloses = N.hsiCloses;
+  if (N.hsi52wHigh) cn.hsi52wHigh = N.hsi52wHigh;
+  ['vhsi','hstech','southbound','sentiment'].forEach(k => { if (N[k]) cn[k] = N[k]; });
+  DATA_CONFIG.etfs.forEach(e => { const x = (S.etfs || {})[e.ticker];
+    if (x) Object.assign(e, x, { derived:false, note:'', fromSnapshot:true }); });
+  if (S.asOf) DATA_CONFIG.snapshotAsOf = S.asOf;
+  const used = !!(U.fearGreed || N.hsiCloses || N.sentiment || Object.keys(S.etfs || {}).length);
+  state.snapshot = { generatedAt:S.generatedAt, errors:S.errors || [], used };
+}
+
+/* ============================ UI WIRING ============================ */
+function renderMode() {
+  const b = $('modeBadge'), s = state.snapshot;
+  const ok = s && s.used;
+  b.className = 'px-2 py-1 rounded-full border ' + (ok ? 'border-emerald-600 text-emerald-300' : 'border-amber-600 text-amber-300');
+  b.textContent = ok ? `Daily snapshot · ${DATA_CONFIG.snapshotAsOf}` : `Built-in snapshot · ${DATA_CONFIG.snapshotAsOf}`;
+  $('lastUpdated').textContent = ok ? `${DATA_CONFIG.snapshotAsOf} (generated ${new Date(s.generatedAt).toLocaleString()})` : `${DATA_CONFIG.snapshotAsOf} (built-in)`;
+  $('snapLog').textContent = !s ? 'snapshot-data.js not found — showing built-in values. Run update_snapshot.py to refresh.'
+    : s.errors.length ? `Snapshot warnings (last good or built-in values kept): ${s.errors.join(' · ')}` : '';
+}
+function setActive(groupId, attr, val) {
+  document.querySelectorAll(`#${groupId} button`).forEach(b => b.className = 'px-2 py-1 ' + (String(b.dataset[attr]) === String(val) ? 'bg-slate-700 text-white' : 'hover:bg-slate-800'));
+}
+function renderAll() {
+  document.querySelectorAll('[data-market]').forEach(el => el.classList.toggle('hidden-view', state.view !== 'all' && el.dataset.market !== state.view));
+  setActive('tfGroup', 'tf', state.tf); setActive('newsFilter', 'f', state.news);
+  renderMode(); renderGauges(); renderTable(); renderTrend(); renderRsiChart(); renderNews(); renderSide();
+}
+
+$('viewSel').onchange = (e) => { state.view = e.target.value; renderAll(); };
+document.querySelectorAll('#tfGroup button').forEach(b => b.onclick = () => { state.tf = +b.dataset.tf; renderAll(); });
+document.querySelectorAll('#newsFilter button').forEach(b => b.onclick = () => { state.news = b.dataset.f; renderAll(); });
+document.querySelectorAll('th.sortable').forEach(th => th.onclick = () => {
+  const k = th.dataset.k; state.sortDir = state.sortKey === k ? -state.sortDir : 1; state.sortKey = k; renderTable(); });
+
+/* Boot */
+Chart.defaults.color = C.txt;
+applySnapshot(window.SNAPSHOT);
+renderAll();
+</script>
+</body>
+</html>
