@@ -169,7 +169,10 @@
 </div>
 
 <!-- Optional daily snapshot written by update_snapshot.py; the page works without it -->
-<script src="snapshot-data.js" onerror="window.SNAPSHOT=undefined"></script>
+<script>
+  /* Cache-bust: GitHub Pages lets browsers keep files ~10 min; always fetch the latest snapshot */
+  document.write('<script src="snapshot-data.js?t=' + Date.now() + '" onerror="window.SNAPSHOT=undefined"><\/script>');
+</script>
 <script>
 /* =====================================================================
    DATA_CONFIG — every value carries its source URL and as-of date.
@@ -430,6 +433,21 @@ function renderCryptoGauge() {
   $('cryptoSrc').innerHTML = `Alternative.me Crypto Fear & Greed Index, ${fg.asOf} (${fg.rating || z.label}) · ${link(fg.src, 'source')}. Daily, combines volatility, volume/momentum, social media, dominance and search trends.`;
 }
 
+/* Change of a Fear & Greed series over the selected period: latest vs last reading on/before (latest − N days) */
+function deltaOver(hist, days) {
+  const h = (hist || []).filter(p => p && p.v !== null && p.v !== undefined);
+  if (h.length < 2) return null;
+  const last = h[h.length - 1], cutoff = new Date(last.d) - days * 864e5;
+  const ref = [...h].reverse().find(p => new Date(p.d) <= cutoff);
+  return ref ? { d: last.v - ref.v, from: ref.v, on: ref.d } : null;
+}
+function deltaTxt(hist) {
+  const x = deltaOver(hist, state.tf);
+  if (!x) return `<span class="text-slate-500">no ${state.tf}D history</span>`;
+  const up = x.d >= 0, col = up ? 'text-emerald-400' : 'text-rose-400';
+  return `<span class="${col}">${up ? '▲' : '▼'} ${Math.abs(Math.round(x.d * 10) / 10)}</span> vs ${state.tf}D ago (${scoreTxt(x.from)} on ${x.on.slice(5)})`;
+}
+
 function renderGlance() {
   const card = (m, label, score, sub) => { const z = zone(score);
     return `<button data-go="${m}" class="card p-3 text-left hover:border-slate-500 transition-colors">
@@ -440,9 +458,9 @@ function renderGlance() {
   const rsi = DATA_CONFIG.etfs.filter(e => e.rsi !== null && e.rsi !== undefined);
   const os = rsi.filter(e => e.rsi < 30).map(e => e.ticker), ob = rsi.filter(e => e.rsi > 70).map(e => e.ticker);
   $('glance').innerHTML =
-    card('US', 'US · CNN Fear & Greed', DATA_CONFIG.us.fearGreed.value, `as of ${DATA_CONFIG.us.fearGreed.asOf}`) +
-    card('CN', 'China/HK · derived', state.cnScore, `as of ${DATA_CONFIG.cn.hsiCloses.at(-1).d}`) +
-    card('CRYPTO', 'Crypto · Alternative.me', DATA_CONFIG.crypto.fearGreed.value, `as of ${DATA_CONFIG.crypto.fearGreed.asOf}`) +
+    card('US', 'US · CNN Fear & Greed', DATA_CONFIG.us.fearGreed.value, `${deltaTxt(DATA_CONFIG.us.history)}<br>as of ${DATA_CONFIG.us.fearGreed.asOf}`) +
+    card('CN', 'China/HK · derived', state.cnScore, `${deltaTxt(DATA_CONFIG.cn.sentiment?.history)}<br>as of ${DATA_CONFIG.cn.hsiCloses.at(-1).d}`) +
+    card('CRYPTO', 'Crypto · Alternative.me', DATA_CONFIG.crypto.fearGreed.value, `${deltaTxt(DATA_CONFIG.crypto.fearGreed.history)}<br>as of ${DATA_CONFIG.crypto.fearGreed.asOf}`) +
     `<div class="card p-3"><div class="text-[11px] text-slate-400">14-day RSI across ${rsi.length} assets</div>
       <div class="text-sm mt-1"><span class="text-emerald-400 font-semibold">${os.length} oversold</span> · <span class="text-rose-400 font-semibold">${ob.length} overbought</span></div>
       <div class="src">${os.length ? 'Oversold: ' + os.join(', ') : 'None below 30'}${ob.length ? ' · Overbought: ' + ob.join(', ') : ''}</div></div>`;
