@@ -24,7 +24,7 @@
   <header class="card p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
     <div>
       <h1 class="text-lg md:text-xl font-semibold tracking-tight">Cross-Market Sentiment & Technical Monitor</h1>
-      <p class="text-xs text-slate-400">US Equities vs China / Hong Kong Equities · Fear & Greed · 14-day RSI (Wilder)</p>
+      <p class="text-xs text-slate-400">US Equities vs China / Hong Kong Equities vs Crypto · Fear & Greed · 14-day RSI (Wilder)</p>
     </div>
     <div class="flex flex-wrap items-center gap-2 text-xs">
       <span id="modeBadge" class="px-2 py-1 rounded-full border"></span>
@@ -32,12 +32,8 @@
         <option value="all">Combined Comparison</option>
         <option value="US">US Market</option>
         <option value="CN">China / HK Market</option>
+        <option value="CRYPTO">Crypto Market</option>
       </select>
-      <div id="tfGroup" class="flex rounded overflow-hidden border border-slate-700">
-        <button data-tf="1" class="px-2 py-1">1D</button>
-        <button data-tf="7" class="px-2 py-1">7D</button>
-        <button data-tf="30" class="px-2 py-1">30D</button>
-      </div>
       <span class="text-slate-400">Data as of: <span id="lastUpdated" class="mono"></span></span>
     </div>
   </header>
@@ -45,7 +41,7 @@
   <p id="snapLog" class="src px-1"></p>
 
   <!-- ============ 2. FEAR & GREED GAUGES ============ -->
-  <section class="grid md:grid-cols-2 gap-4">
+  <section class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
     <div class="card p-4" data-market="US">
       <div class="flex justify-between items-start">
         <h2 class="font-semibold">US Market · Fear & Greed</h2>
@@ -72,12 +68,25 @@
       <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="cnMetrics"></div>
       <p class="src mt-3" id="cnSrc"></p>
     </div>
+    <div class="card p-4" data-market="CRYPTO">
+      <div class="flex justify-between items-start">
+        <h2 class="font-semibold">Crypto Market · Fear & Greed</h2>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-sky-900/40 text-sky-300">Published index</span>
+      </div>
+      <div class="relative h-40 mt-2"><canvas id="gaugeCRYPTO"></canvas>
+        <div class="absolute inset-x-0 bottom-1 text-center">
+          <div id="cryptoScore" class="text-3xl font-bold mono"></div><div id="cryptoZone" class="text-xs font-semibold"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="cryptoMetrics"></div>
+      <p class="src mt-3" id="cryptoSrc"></p>
+    </div>
   </section>
 
   <!-- ============ 3. RSI MONITOR TABLE ============ -->
   <section class="card p-4">
     <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
-      <h2 class="font-semibold">Major ETF Indices · 14-Day RSI Monitor</h2>
+      <h2 class="font-semibold">Major ETFs & Crypto · 14-Day RSI Monitor</h2>
       <span class="src">Click a column header to sort. Each row links to its source. "—" = not available in this snapshot.</span>
     </div>
     <div class="overflow-x-auto">
@@ -88,7 +97,7 @@
             <th class="sortable text-left pr-2" data-k="name">Index / ETF</th>
             <th class="sortable text-left pr-2" data-k="market">Mkt</th>
             <th class="sortable text-right pr-2" data-k="price">Last</th>
-            <th class="sortable text-right pr-2" data-k="chg">1D %</th>
+            <th class="sortable text-right pr-2" data-k="chg" id="chgHead">1D %</th>
             <th class="sortable text-left pr-2 min-w-[180px]" data-k="rsi">14D RSI</th>
             <th class="text-left pr-2">Signal</th>
             <th class="text-left">Source / as of</th>
@@ -102,7 +111,16 @@
   <!-- ============ 4. CHARTS ============ -->
   <section class="grid md:grid-cols-2 gap-4">
     <div class="card p-4">
-      <h2 class="font-semibold">Fear & Greed Trend</h2>
+      <div class="flex justify-between items-center gap-2">
+        <h2 class="font-semibold">Fear & Greed Trend</h2>
+        <div class="flex items-center gap-2 text-xs"><span class="text-slate-400">Period</span>
+          <div id="tfGroup" class="flex rounded overflow-hidden border border-slate-700">
+            <button data-tf="1" class="px-2 py-1">1D</button>
+            <button data-tf="7" class="px-2 py-1">7D</button>
+            <button data-tf="30" class="px-2 py-1">30D</button>
+          </div>
+        </div>
+      </div>
       <div class="h-64 mt-2"><canvas id="trendChart"></canvas></div>
       <p class="src mt-2" id="trendNote"></p>
     </div>
@@ -122,6 +140,7 @@
           <button data-f="all" class="px-2 py-1">All</button>
           <button data-f="US" class="px-2 py-1">US</button>
           <button data-f="CN" class="px-2 py-1">China/HK</button>
+          <button data-f="CRYPTO" class="px-2 py-1">Crypto</button>
         </div>
       </div>
       <ul id="newsList" class="space-y-2"></ul>
@@ -140,7 +159,7 @@
   </section>
 
   <footer class="src text-center pb-4">
-    Data from third-party public sources (linked on each figure); it may be delayed, incomplete or wrong, so verify against the original source before relying on it. The China/HK score and headline scores are derived heuristics, not published indices. Not affiliated with any data provider. For information only; not investment advice. Code under the MIT License.
+    Data from third-party public sources (linked on each figure); it may be delayed, incomplete or wrong, so verify against the original source before relying on it. The China/HK score and headline scores are derived heuristics, not published indices. Crypto assets are highly volatile. Not affiliated with any data provider. For information only; not investment advice. Code under the MIT License.
   </footer>
 </div>
 
@@ -189,6 +208,12 @@ const DATA_CONFIG = {
     hstech: { value: 3511.14, chgPct: -3.78, asOf: '2026-11-20', src: 'https://www.bastillepost.com/global/article/6382211-hong-kong-stocks-close-lower-friday-12' },
   },
 
+  crypto: {
+    // Alternative.me Crypto Fear & Greed Index (published; readings are per UTC day)
+    fearGreed: { value: 12, rating: 'Extreme Fear', asOf: '2026-11-21', src: 'https://alternative.me/crypto/fear-and-greed-index/',
+      history: [ { d:'2026-11-19', v:10 }, { d:'2026-11-20', v:12 }, { d:'2026-11-21', v:12 } ] },
+  },
+
   etfs: [
     { ticker:'SPY', name:'SPDR S&P 500', market:'US', price:689.81, chg:-3.64, rsi:24.42, asOf:'2026-11-20',
       src:'https://wallstreetnumbers.com/etfs/spy/rsi', srcName:'StockAnalysis / WallStreetNumbers',
@@ -210,6 +235,10 @@ const DATA_CONFIG = {
       src:'https://hellostake.com/au/blog/trending/what-are-best-chinese-etfs-to-invest-in', srcName:'Stake (secondary)' },
     { ticker:'KWEB', name:'KraneShares CSI China Internet', market:'CN', price:20.72, chg:-2.77, rsi:23.78, asOf:'2026-11-20',
       src:'https://finviz.com/stock?t=KWEB', srcName:'Finviz' },
+    { ticker:'BTC', name:'Bitcoin (USD)', market:'CRYPTO', price:null, chg:null, rsi:null, asOf:'—',
+      src:'https://pro.kraken.com/app/trade/btc-usd', srcName:'Filled by update_snapshot.py (Kraken)' },
+    { ticker:'ETH', name:'Ether (USD)', market:'CRYPTO', price:null, chg:null, rsi:null, asOf:'—',
+      src:'https://pro.kraken.com/app/trade/eth-usd', srcName:'Filled by update_snapshot.py (Kraken)' },
   ],
 
   headlines: [
@@ -323,6 +352,11 @@ function metric(label, value, sub, src) {
   return `<div class="bg-slate-900/60 rounded p-2"><div class="text-[11px] text-slate-400">${label}</div>
     <div class="mono font-semibold">${value}</div><div class="src">${sub || ''}${src ? ' · ' + link(src, 'source') : ''}</div></div>`;
 }
+/* The period selector (1D/7D/30D) drives the trend chart and the table's change column */
+const chgKey = () => state.tf === 1 ? 'chg' : `chg${state.tf}`;
+const chgOf = (e) => e[chgKey()];
+const MKT = { US:['US', 'bg-sky-900/50 text-sky-300'], CN:['CN/HK', 'bg-red-900/40 text-red-300'], CRYPTO:['Crypto', 'bg-violet-900/50 text-violet-300'] };
+const mktLabel = (m) => (MKT[m] || [m])[0];
 const pct = (v) => v === null || v === undefined ? '' : `<span class="${v >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${v >= 0 ? '+' : ''}${fmt(v)}%</span>`;
 
 function renderGauges() {
@@ -362,11 +396,23 @@ function renderGauges() {
   $('cnSrc').innerHTML = `${method} 52w high ${fmt(cn.hsi52wHigh.value)} · ${link(cn.hsi52wHigh.src, 'source')}. No official China/HK Fear & Greed index exists.`;
 }
 
+function renderCryptoGauge() {
+  const fg = DATA_CONFIG.crypto.fearGreed, z = zone(fg.value);
+  gauge('gaugeCRYPTO', fg.value);
+  $('cryptoScore').textContent = fg.value ?? '—'; $('cryptoZone').textContent = z.label; $('cryptoZone').style.color = z.color;
+  const asset = (t) => DATA_CONFIG.etfs.find(e => e.ticker === t) || {};
+  $('cryptoMetrics').innerHTML = ['BTC', 'ETH'].map(t => { const a = asset(t);
+    return metric(a.name || t, a.price === null || a.price === undefined ? '—' : '$' + fmt(a.price, 0),
+      `${a.chg === null || a.chg === undefined ? '' : pct(a.chg) + ' · '}${a.asOf || ''} (UTC close)`, a.src); }).join('');
+  $('cryptoSrc').innerHTML = `Alternative.me Crypto Fear & Greed Index, ${fg.asOf} (${fg.rating || z.label}) · ${link(fg.src, 'source')}. Daily, combines volatility, volume/momentum, social media, dominance and search trends.`;
+}
+
 /* ============================ RENDER: RSI TABLE ============================ */
 function renderTable() {
+  $('chgHead').textContent = `${state.tf}D %`;
   const rows = DATA_CONFIG.etfs.filter(e => state.view === 'all' || e.market === state.view).slice()
     .sort((a, b) => {
-      const x = a[state.sortKey], y = b[state.sortKey];
+      const k = state.sortKey === 'chg' ? chgKey() : state.sortKey, x = a[k], y = b[k];
       if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
       return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
     });
@@ -382,9 +428,9 @@ function renderTable() {
     return `<tr class="border-b border-slate-800/80 align-top">
       <td class="py-2 pr-2 mono font-semibold">${e.ticker}</td>
       <td class="pr-2 text-slate-300">${e.name}</td>
-      <td class="pr-2"><span class="text-[10px] px-1.5 py-0.5 rounded ${e.market === 'US' ? 'bg-sky-900/50 text-sky-300' : 'bg-red-900/40 text-red-300'}">${e.market === 'US' ? 'US' : 'CN/HK'}</span></td>
-      <td class="pr-2 text-right mono">${e.ccy || '$'}${fmt(e.price, e.price < 10 ? 3 : 2)}${e.derived ? '<sup class="text-amber-400">*</sup>' : ''}</td>
-      <td class="pr-2 text-right mono">${e.chg === null ? '—' : pct(e.chg)}</td>
+      <td class="pr-2"><span class="text-[10px] px-1.5 py-0.5 rounded ${(MKT[e.market] || MKT.US)[1]}">${mktLabel(e.market)}</span></td>
+      <td class="pr-2 text-right mono">${e.price === null || e.price === undefined ? '—' : (e.ccy || '$') + fmt(e.price, e.price < 10 ? 3 : 2)}${e.derived ? '<sup class="text-amber-400">*</sup>' : ''}</td>
+      <td class="pr-2 text-right mono">${chgOf(e) === null || chgOf(e) === undefined ? '—' : pct(chgOf(e))}</td>
       <td class="pr-2">${meter}</td>
       <td class="pr-2"><span class="text-[11px] px-2 py-0.5 rounded ${s.cls}">${s.label}</span></td>
       <td class="src">${link(e.src, e.srcName)} · ${e.asOf}${e.note ? `<br>${e.note}` : ''}</td></tr>`;
@@ -400,11 +446,14 @@ function renderTrend() {
   const us = DATA_CONFIG.us.history.filter(p => inWin(p.d));
   const cnSrc = DATA_CONFIG.cn.sentiment?.history || DATA_CONFIG.cn.hsiCloses.map(p => ({ d:p.d, v: computeCnComposite(p.d, p.v, false).score }));
   const cn = cnSrc.filter(p => inWin(p.d));
-  const labels = [...new Set([...us, ...cn].map(p => p.d))].sort();
+  const cr = (DATA_CONFIG.crypto.fearGreed.history || []).filter(p => inWin(p.d));
+  const labels = [...new Set([...us, ...cn, ...cr].map(p => p.d))].sort();
   const series = (arr) => labels.map(l => { const p = arr.find(q => q.d === l); return p ? +p.v.toFixed(1) : null; });
   const ds = [];
-  if (state.view !== 'CN') ds.push({ label:'US (CNN F&G)', data:series(us), borderColor:C.sky, backgroundColor:C.sky, spanGaps:true, tension:0.25, pointRadius:4 });
-  if (state.view !== 'US') ds.push({ label:'China/HK (derived)', data:series(cn), borderColor:C.rose, backgroundColor:C.rose, spanGaps:true, tension:0.25, pointRadius:4, borderDash:[4,3] });
+  const show = (m) => state.view === 'all' || state.view === m;
+  if (show('US')) ds.push({ label:'US (CNN F&G)', data:series(us), borderColor:C.sky, backgroundColor:C.sky, spanGaps:true, tension:0.25, pointRadius:4 });
+  if (show('CN')) ds.push({ label:'China/HK (derived)', data:series(cn), borderColor:C.rose, backgroundColor:C.rose, spanGaps:true, tension:0.25, pointRadius:4, borderDash:[4,3] });
+  if (show('CRYPTO')) ds.push({ label:'Crypto (Alternative.me)', data:series(cr), borderColor:'#a78bfa', backgroundColor:'#a78bfa', spanGaps:true, tension:0.25, pointRadius:4 });
   if (charts.trend) charts.trend.destroy();
   charts.trend = new Chart($('trendChart'), {
     type:'line', data:{ labels: labels.map(l => l.slice(5)), datasets:ds },
@@ -444,14 +493,14 @@ function renderNews() {
     const cls = s > 0.15 ? 'bg-emerald-900/50 text-emerald-300' : s < -0.15 ? 'bg-rose-900/50 text-rose-300' : 'bg-amber-900/40 text-amber-300';
     return `<li class="bg-slate-900/60 rounded p-2 flex justify-between gap-2">
       <div><a href="${h.u}" target="_blank" rel="noopener" class="text-sm hover:underline">${h.t}</a>
-      <div class="src">${h.s} · ${h.d} · ${h.m === 'US' ? 'US' : 'China/HK'}</div></div>
+      <div class="src">${h.s} · ${h.d} · ${mktLabel(h.m)}</div></div>
       <span class="shrink-0 self-start text-[11px] mono px-2 py-0.5 rounded ${cls}">${s >= 0 ? '+' : ''}${s.toFixed(2)} ${lab}</span></li>`;
   }).join('') || '<li class="text-slate-500 text-sm">No headlines for this filter.</li>';
 }
 function renderSide() {
   const v = (x) => state.view === 'all' || x.m === state.view;
   $('drivers').innerHTML = DATA_CONFIG.drivers.filter(v).map(d => `<li class="flex gap-2">
-    <span class="shrink-0 mt-0.5 text-[10px] px-1.5 rounded h-fit ${d.dir === 'bull' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-rose-900/50 text-rose-300'}">${d.dir === 'bull' ? '▲' : '▼'} ${d.m === 'US' ? 'US' : 'CN/HK'}</span>
+    <span class="shrink-0 mt-0.5 text-[10px] px-1.5 rounded h-fit ${d.dir === 'bull' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-rose-900/50 text-rose-300'}">${d.dir === 'bull' ? '▲' : '▼'} ${mktLabel(d.m)}</span>
     <span>${d.t} <span class="src">${link(d.u, 'source')}</span></span></li>`).join('');
   const t = new Date(), today = Date.UTC(t.getFullYear(), t.getMonth(), t.getDate());
   $('catalysts').innerHTML = DATA_CONFIG.catalysts.filter(v).map(c => {
@@ -459,7 +508,7 @@ function renderSide() {
     const when = days < 0 ? 'passed' : days === 0 ? 'today' : `in ${days}d`;
     return `<li class="flex justify-between gap-2 border-b border-slate-800/70 py-1 ${days < 0 ? 'opacity-40' : ''}">
       <span><span class="mono text-slate-400">${c.d.slice(5)}</span> · ${c.t} <span class="src">${link(c.u, 'source')}</span></span>
-      <span class="shrink-0 text-[10px] text-slate-400">${c.m === 'US' ? 'US' : 'CN'} · ${when}</span></li>`;
+      <span class="shrink-0 text-[10px] text-slate-400">${mktLabel(c.m)} · ${when}</span></li>`;
   }).join('');
 }
 
@@ -479,10 +528,11 @@ function applySnapshot(S) {
   if (N.hsiCloses?.length) cn.hsiCloses = N.hsiCloses;
   if (N.hsi52wHigh) cn.hsi52wHigh = N.hsi52wHigh;
   ['vhsi','hstech','southbound','sentiment'].forEach(k => { if (N[k]) cn[k] = N[k]; });
+  if (S.crypto?.fearGreed) DATA_CONFIG.crypto.fearGreed = S.crypto.fearGreed;
   DATA_CONFIG.etfs.forEach(e => { const x = (S.etfs || {})[e.ticker];
     if (x) Object.assign(e, x, { derived:false, note:'', fromSnapshot:true }); });
   if (S.asOf) DATA_CONFIG.snapshotAsOf = S.asOf;
-  const used = !!(U.fearGreed || N.hsiCloses || N.sentiment || Object.keys(S.etfs || {}).length);
+  const used = !!(U.fearGreed || N.hsiCloses || N.sentiment || S.crypto?.fearGreed || Object.keys(S.etfs || {}).length);
   state.snapshot = { generatedAt:S.generatedAt, errors:S.errors || [], used };
 }
 
@@ -502,7 +552,7 @@ function setActive(groupId, attr, val) {
 function renderAll() {
   document.querySelectorAll('[data-market]').forEach(el => el.classList.toggle('hidden-view', state.view !== 'all' && el.dataset.market !== state.view));
   setActive('tfGroup', 'tf', state.tf); setActive('newsFilter', 'f', state.news);
-  renderMode(); renderGauges(); renderTable(); renderTrend(); renderRsiChart(); renderNews(); renderSide();
+  renderMode(); renderGauges(); renderCryptoGauge(); renderTable(); renderTrend(); renderRsiChart(); renderNews(); renderSide();
 }
 
 $('viewSel').onchange = (e) => { state.view = e.target.value; renderAll(); };

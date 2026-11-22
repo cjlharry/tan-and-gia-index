@@ -19,6 +19,10 @@ Every data item has a chain of sources, tried in order:
         Sina -> Eastmoney quotes
   Southbound Stock Connect net buy
         Eastmoney "南向资金" -> Eastmoney "港股通沪" + "港股通深"
+  Crypto Fear & Greed Index
+        Alternative.me (published index; previous value kept if unavailable)
+  Bitcoin, Ether (UTC daily closes; today's unfinished day is excluded)
+        Kraken -> CoinGecko -> Yahoo (only if yfinance is installed)
 
 Rate-limit protection:
   - minimum gap between calls to the same server (HOST_GAP_S)
@@ -67,7 +71,8 @@ PCT_MIN_PERIODS = 126
 HISTORY_DAYS = 45                    # points kept for the trend chart
 MAX_AGE_DAYS = 12                    # a source whose latest data is older than this is treated as stale -> next source
 
-HOST_GAP_S = {"sina": 1.5, "em-quote": 4.0, "em-data": 2.0, "cnn": 1.0, "yahoo": 1.5}
+HOST_GAP_S = {"sina": 1.5, "em-quote": 4.0, "em-data": 2.0, "cnn": 1.0, "yahoo": 1.5,
+              "altme": 1.0, "kraken": 1.5, "coingecko": 3.0}
 RETRIES = 2                          # extra attempts after a transient network error
 BACKOFF_S = (5, 20)                  # wait before retry 1, retry 2
 COOLDOWN_S = 360                     # pause before re-trying rate-limited items (0 = no second pass)
@@ -78,6 +83,12 @@ ETFS = {"SPY": "US", "QQQ": "US", "IWM": "US", "DIA": "US", "FXI": "US", "KWEB":
 
 CNN_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 CNN_SRC = "https://www.cnn.com/markets/fear-and-greed"
+ALTME_URL = "https://api.alternative.me/fng/?limit=60"
+ALTME_SRC = "https://alternative.me/crypto/fear-and-greed-index/"
+CRYPTO = {  # symbol: (Kraken pair, CoinGecko id, Yahoo symbol)
+    "BTC": ("XBTUSD", "bitcoin", "BTC-USD"),
+    "ETH": ("ETHUSD", "ethereum", "ETH-USD"),
+}
 HSGT_SRC = "https://data.eastmoney.com/hsgt/index.html"
 
 # AKShare renamed these in 1.20.x (needs Python >= 3.11.5); older installs keep the old names.
@@ -289,6 +300,56 @@ def hk_index_providers(sym: str):
     return p
 
 
+def http_json(url: str) -> dict:
+    import requests
+    r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (snapshot script)", "Accept": "application/json"})
+    r.raise_for_status()
+    return r.json()
+
+
+def utc_today() -> pd.Timestamp:
+    return pd.Timestamp(datetime.now(timezone.utc).date())
+
+
+def completed_days(s: pd.Series) -> pd.Series:
+    """Crypto trades 24/7: keep only fully closed UTC days (drop today's candle in progress)."""
+    return s[s.index < utc_today()]
+
+
+def kraken_close(pair: str) -> pd.Series:
+    j = http_json(f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval=1440")
+    if j.get("error"):
+        raise ValueError(f"Kraken {pair}: {j['error']}")
+    rows = next(v for k, v in j["result"].items() if k != "last")          # [time, open, high, low, close, ...]
+    s = pd.Series([float(r[4]) for r in rows], index=pd.to_datetime([int(r[0]) for r in rows], unit="s").normalize())
+    return completed_days(s)
+
+
+def coingecko_close(cid: str) -> pd.Series:
+    j = http_json(f"https://api.coingecko.com/api/v3/coins/{cid}/market_chart?vs_currency=usd&days=365&interval=daily")
+    # Daily points sit at (about) 00:00 UTC = the close of the previous UTC day; the final point is the live price.
+    pts = [(pd.to_datetime(ms, unit="ms"), float(p)) for ms, p in j["prices"]]
+    pts = [(t.normalize() - pd.Timedelta(days=1), p) for t, p in pts if t - t.normalize() < pd.Timedelta(hours=1)]
+    s = pd.Series(dict(pts), dtype=float).sort_index()
+    return completed_days(s[~s.index.duplicated(keep="last")])
+
+
+def crypto_providers(sym: str):
+    pair, cid, ysym = CRYPTO[sym]
+    p = [("Kraken", lambda: (checked(call("kraken", kraken_close, pair), f"Kraken {pair}", RSI_N + 1),
+                             f"https://pro.kraken.com/app/trade/{sym.lower()}-usd", "public OHLC API (UTC daily close)")),
+         ("CoinGecko", lambda: (checked(call("coingecko", coingecko_close, cid), f"CoinGecko {cid}", RSI_N + 1),
+                                f"https://www.coingecko.com/en/coins/{cid}", "market_chart API (UTC daily close)"))]
+    if HAS_YF:
+        p.append(("Yahoo", lambda: (checked(completed_days(call("yahoo", yf_close, ysym)), f"Yahoo {ysym}", RSI_N + 1),
+                                    f"https://finance.yahoo.com/quote/{ysym}", "yfinance")))
+    return p
+
+
+def crypto_fg_providers():
+    return [("Alternative.me", lambda: call("altme", http_json, ALTME_URL))]
+
+
 def southbound_providers():
     def combined():
         sh = daily_series(call("em-data", akfn("stock_hsgt_hist_em"), symbol="港股通沪"), ("当日成交净买额",), "EM 港股通沪")
@@ -322,11 +383,18 @@ def apply_cnn(snap, label, raw, got):
                      "asOf": utc_day(vx[-1]["x"]), "src": CNN_SRC}
 
 
+def pct_back(s: pd.Series, days: int) -> float | None:
+    """% change from the last close on or before (latest date − days calendar days) to the latest close."""
+    ref = s.loc[: s.index[-1] - pd.Timedelta(days=days)]
+    return round(float(s.iloc[-1] / ref.iloc[-1] - 1) * 100, 2) if len(ref) else None
+
+
 def apply_etf(t):
     def f(snap, label, res, got):
         s, src, fn = res
         s = s.tail(300)
         snap["etfs"][t] = {"price": round(float(s.iloc[-1]), 3), "chg": round(float(s.iloc[-1] / s.iloc[-2] - 1) * 100, 2),
+                           "chg7": pct_back(s, 7), "chg30": pct_back(s, 30),
                            "rsi": round(wilder_rsi(s), 2), "asOf": iso(s.index[-1]), "src": src,
                            "srcName": f"{label} via {fn} · RSI(14, Wilder) from {len(s)} closes"}
     return f
@@ -354,10 +422,23 @@ def apply_south(snap, label, daily, got):
                                 "note": "Eastmoney net buy, unit 亿 (100 million)"}
 
 
+def apply_crypto_fg(snap, label, j, got):
+    data = sorted(j.get("data") or [], key=lambda r: int(r["timestamp"]))     # timestamp = UTC day of the reading
+    if not data:
+        raise ValueError(f"Alternative.me: no data ({(j.get('metadata') or {}).get('error')})")
+    day = lambda r: datetime.fromtimestamp(int(r["timestamp"]), tz=timezone.utc).strftime("%Y-%m-%d")
+    hist = list({day(r): {"d": day(r), "v": float(r["value"])} for r in data}.values())
+    latest = data[-1]
+    snap["crypto"]["fearGreed"] = {"value": float(latest["value"]), "rating": latest["value_classification"],
+                                   "asOf": day(latest), "src": ALTME_SRC, "via": label, "history": hist[-HISTORY_DAYS:]}
+
+
 ITEMS = [("CNN Fear & Greed", cnn_providers, apply_cnn)] + \
         [(t, (lambda t=t: etf_providers(t)), apply_etf(t)) for t in ETFS] + \
         [(f"HK index {s}", (lambda s=s: hk_index_providers(s)), apply_index(k)) for k, s in (("hsi", "HSI"), ("hstech", "HSTECH"), ("vhsi", "VHSI"))] + \
-        [("Southbound flow", southbound_providers, apply_south)]
+        [("Southbound flow", southbound_providers, apply_south)] + \
+        [("Crypto Fear & Greed", crypto_fg_providers, apply_crypto_fg)] + \
+        [(s, (lambda s=s: crypto_providers(s)), apply_etf(s)) for s in CRYPTO]
 
 
 def hk_fear_greed(hsi: pd.Series | None, vhsi: pd.Series | None, dates) -> list[dict]:
@@ -424,7 +505,8 @@ def main() -> int:
     out_path = Path(args.out)
     prev = load_previous(out_path)
     snap = {"generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "us": dict(prev.get("us", {})), "cn": dict(prev.get("cn", {})), "etfs": dict(prev.get("etfs", {})), "errors": []}
+            "us": dict(prev.get("us", {})), "cn": dict(prev.get("cn", {})), "etfs": dict(prev.get("etfs", {})),
+            "crypto": dict(prev.get("crypto", {})), "errors": []}
     got: dict[str, pd.Series] = {}
 
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] snapshot run · yfinance {'available' if HAS_YF else 'not installed'}")
