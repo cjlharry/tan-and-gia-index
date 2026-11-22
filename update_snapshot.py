@@ -68,7 +68,8 @@ import pandas as pd
 RSI_N = 14
 PCT_WINDOW = 252                     # 1-year percentile window for the HK Fear & Greed components
 PCT_MIN_PERIODS = 126
-HISTORY_DAYS = 45                    # points kept for the trend chart
+HISTORY_DAYS = 130                   # points kept per series (covers the 120-day period, incl. daily crypto data)
+PERIODS_D = (7, 30, 60, 90, 120)     # calendar-day periods for % change (1-day change is "chg")
 MAX_AGE_DAYS = 12                    # a source whose latest data is older than this is treated as stale -> next source
 
 HOST_GAP_S = {"sina": 1.5, "em-quote": 4.0, "em-data": 2.0, "cnn": 1.0, "yahoo": 1.5,
@@ -83,7 +84,7 @@ ETFS = {"SPY": "US", "QQQ": "US", "IWM": "US", "DIA": "US", "FXI": "US", "KWEB":
 
 CNN_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 CNN_SRC = "https://www.cnn.com/markets/fear-and-greed"
-ALTME_URL = "https://api.alternative.me/fng/?limit=60"
+ALTME_URL = "https://api.alternative.me/fng/?limit=150"
 ALTME_SRC = "https://alternative.me/crypto/fear-and-greed-index/"
 CRYPTO = {  # symbol: (Kraken pair, CoinGecko id, Yahoo symbol)
     "BTC": ("XBTUSD", "bitcoin", "BTC-USD"),
@@ -394,7 +395,7 @@ def apply_etf(t):
         s, src, fn = res
         s = s.tail(300)
         snap["etfs"][t] = {"price": round(float(s.iloc[-1]), 3), "chg": round(float(s.iloc[-1] / s.iloc[-2] - 1) * 100, 2),
-                           "chg7": pct_back(s, 7), "chg30": pct_back(s, 30),
+                           **{f"chg{n}": pct_back(s, n) for n in PERIODS_D},
                            "rsi": round(wilder_rsi(s), 2), "asOf": iso(s.index[-1]), "src": src,
                            "srcName": f"{label} via {fn} · RSI(14, Wilder) from {len(s)} closes"}
     return f

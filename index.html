@@ -39,13 +39,16 @@
           <button data-tf="1" class="px-2 py-1">1D</button>
           <button data-tf="7" class="px-2 py-1">7D</button>
           <button data-tf="30" class="px-2 py-1">30D</button>
+          <button data-tf="60" class="px-2 py-1">60D</button>
+          <button data-tf="90" class="px-2 py-1">90D</button>
+          <button data-tf="120" class="px-2 py-1">120D</button>
         </div>
       </div>
       <span class="text-slate-400">Data as of: <span id="lastUpdated" class="mono"></span></span>
     </div>
   </header>
 
-  <section id="glance" class="grid grid-cols-2 md:grid-cols-4 gap-3"></section>
+  <section id="glance" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"></section>
 
   <p id="snapLog" class="src px-1"></p>
 
@@ -448,20 +451,53 @@ function deltaTxt(hist) {
   return `<span class="${col}">${up ? '▲' : '▼'} ${Math.abs(Math.round(x.d * 10) / 10)}</span> vs ${state.tf}D ago (${scoreTxt(x.from)} on ${x.on.slice(5)})`;
 }
 
+/* Mini line chart (0–100 scale) of a Fear & Greed series within the selected period */
+function sparkline(points, color) {
+  if (!points || points.length < 2) return '<div class="h-10"></div>';
+  // y-axis fitted to the period's range (min. 10 points) so moves are visible; labelled with that range
+  const vs = points.map(p => p.v), mid = (Math.max(...vs) + Math.min(...vs)) / 2, half = Math.max((Math.max(...vs) - Math.min(...vs)) / 2 * 1.15, 5);
+  const lo = Math.max(0, mid - half), hi = Math.min(100, mid + half);
+  const W = 160, H = 40, xs = (i) => (i / (points.length - 1)) * W, ys = (v) => H - 2 - ((v - lo) / (hi - lo || 1)) * (H - 4);
+  const path = points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(p.v).toFixed(1)}`).join(' ');
+  return `<div class="relative"><span class="absolute right-0 -top-1 text-[9px] text-slate-500 mono">${Math.round(hi)}</span>
+    <span class="absolute right-0 bottom-0 text-[9px] text-slate-500 mono">${Math.round(lo)}</span>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-10 mt-1 pr-5">
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    <circle cx="${xs(points.length - 1)}" cy="${ys(points.at(-1).v)}" r="2.5" fill="${color}"/></svg></div>`;
+}
+
 function renderGlance() {
-  const card = (m, label, score, sub) => { const z = zone(score);
+  const tf = state.tf;
+  const card = (m, label, now, hist, asOf) => {
+    const zNow = zone(now), x = deltaOver(hist, tf);
+    const h = (hist || []).filter(p => p && p.v !== null && p.v !== undefined);
+    const win = x ? h.filter(p => p.d >= x.on) : h.slice(-2);
+    let head, sub;
+    if (x) {
+      const zThen = zone(x.from), up = x.d >= 0, col = up ? 'text-emerald-400' : 'text-rose-400';
+      head = `<span class="text-slate-400 text-lg mono">${scoreTxt(x.from)}</span><span class="text-slate-500">→</span>
+              <span class="text-2xl font-bold mono">${scoreTxt(now)}</span>
+              <span class="${col} text-sm font-semibold">${up ? '▲' : '▼'} ${Math.abs(Math.round(x.d * 10) / 10)}</span>`;
+      sub = `<span style="color:${zThen.color}">${zThen.label}</span> <span class="text-slate-500">→</span> <span style="color:${zNow.color}">${zNow.label}</span>`;
+    } else {
+      head = `<span class="text-2xl font-bold mono">${scoreTxt(now)}</span>`;
+      sub = `<span style="color:${zNow.color}">${zNow.label}</span> <span class="text-slate-500">· no ${tf}D history</span>`;
+    }
     return `<button data-go="${m}" class="card p-3 text-left hover:border-slate-500 transition-colors">
-      <div class="text-[11px] text-slate-400">${label}</div>
-      <div class="flex items-baseline gap-2"><span class="text-2xl font-bold mono">${scoreTxt(score)}</span>
-      <span class="text-xs font-semibold" style="color:${z.color}">${z.label}</span></div>
-      <div class="src">${sub}</div></button>`; };
+      <div class="flex justify-between items-center"><span class="text-[11px] text-slate-400">${label}</span>
+        <span class="text-[10px] px-1.5 rounded bg-slate-800 text-slate-300">${tf}D change</span></div>
+      <div class="flex items-baseline gap-2 mt-1">${head}</div>
+      <div class="text-xs font-semibold">${sub}</div>
+      ${sparkline(win, zNow.color)}
+      <div class="src">${x ? `${x.on} → ${asOf}` : `as of ${asOf}`}</div></button>`;
+  };
   const rsi = DATA_CONFIG.etfs.filter(e => e.rsi !== null && e.rsi !== undefined);
   const os = rsi.filter(e => e.rsi < 30).map(e => e.ticker), ob = rsi.filter(e => e.rsi > 70).map(e => e.ticker);
   $('glance').innerHTML =
-    card('US', 'US · CNN Fear & Greed', DATA_CONFIG.us.fearGreed.value, `${deltaTxt(DATA_CONFIG.us.history)}<br>as of ${DATA_CONFIG.us.fearGreed.asOf}`) +
-    card('CN', 'China/HK · derived', state.cnScore, `${deltaTxt(DATA_CONFIG.cn.sentiment?.history)}<br>as of ${DATA_CONFIG.cn.hsiCloses.at(-1).d}`) +
-    card('CRYPTO', 'Crypto · Alternative.me', DATA_CONFIG.crypto.fearGreed.value, `${deltaTxt(DATA_CONFIG.crypto.fearGreed.history)}<br>as of ${DATA_CONFIG.crypto.fearGreed.asOf}`) +
-    `<div class="card p-3"><div class="text-[11px] text-slate-400">14-day RSI across ${rsi.length} assets</div>
+    card('US', 'US · CNN Fear & Greed', DATA_CONFIG.us.fearGreed.value, DATA_CONFIG.us.history, DATA_CONFIG.us.fearGreed.asOf) +
+    card('CN', 'China/HK · derived', state.cnScore, DATA_CONFIG.cn.sentiment?.history, DATA_CONFIG.cn.hsiCloses.at(-1).d) +
+    card('CRYPTO', 'Crypto · Alternative.me', DATA_CONFIG.crypto.fearGreed.value, DATA_CONFIG.crypto.fearGreed.history, DATA_CONFIG.crypto.fearGreed.asOf) +
+    `<div class="card p-3"><div class="text-[11px] text-slate-400">14-day RSI across ${rsi.length} assets (latest)</div>
       <div class="text-sm mt-1"><span class="text-emerald-400 font-semibold">${os.length} oversold</span> · <span class="text-rose-400 font-semibold">${ob.length} overbought</span></div>
       <div class="src">${os.length ? 'Oversold: ' + os.join(', ') : 'None below 30'}${ob.length ? ' · Overbought: ' + ob.join(', ') : ''}</div></div>`;
   document.querySelectorAll('#glance [data-go]').forEach(b => b.onclick = () => {
