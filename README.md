@@ -1,17 +1,18 @@
-# Cross-Market Sentiment Dashboard — US vs China/HK
+# Cross-Market Sentiment Dashboard — US, China/HK and Crypto
 
 A static, single-page dashboard comparing market sentiment and technical conditions in
-US equities and China / Hong Kong equities. It is rebuilt once per trading day from public
+US equities, China / Hong Kong equities and the crypto market. It is rebuilt once a day from public
 sources and makes no data requests of its own when opened.
 
 **What it shows**
 
 - **Fear & Greed gauges** — CNN Business Fear & Greed Index for the US (with its seven
-  components), and a derived China/HK score (method below).
+  components), a derived China/HK score (method below), and the Alternative.me Crypto
+  Fear & Greed Index.
 - **Volatility and positioning** — CBOE VIX and equity put/call ratio; HSI Volatility
   Index (VHSI); Southbound Stock Connect net buying.
-- **14-day RSI monitor** — SPY, QQQ, IWM, DIA, FXI, KWEB, 2800.HK, 3033.HK, computed with
-  Wilder's method from daily closes.
+- **14-day RSI monitor** — SPY, QQQ, IWM, DIA, FXI, KWEB, 2800.HK, 3033.HK, Bitcoin and
+  Ether, computed with Wilder's method from daily closes (UTC daily closes for crypto).
 - **Trend charts, headlines, key drivers and upcoming catalysts.** Headlines, drivers and
   catalysts are curated by hand in `index.html` (`DATA_CONFIG`).
 
@@ -20,7 +21,7 @@ Every figure on the page carries its source link and as-of date.
 ## How it works
 
 ```
-GitHub Actions (weekdays, after the US close)
+GitHub Actions (daily, 00:17 UTC)
    └─ update_snapshot.py ──> snapshot-data.js ──> committed to the repo
 GitHub Pages
    └─ index.html (+ snapshot-data.js) ──> your browser
@@ -40,6 +41,8 @@ falls back to the values built into `index.html`.
 | Hang Seng Index | Sina → Eastmoney → Eastmoney Stock Connect table → Yahoo |
 | HS TECH, VHSI | Sina → Eastmoney |
 | Southbound net buying | Eastmoney 南向资金 → Eastmoney 港股通沪 + 港股通深 |
+| Crypto Fear & Greed | Alternative.me |
+| Bitcoin, Ether | Kraken → CoinGecko → Yahoo |
 
 Sina and Eastmoney are accessed through [AKShare](https://github.com/akfamily/akshare);
 Yahoo through [yfinance](https://github.com/ranaroussi/yfinance).
@@ -72,8 +75,8 @@ score beneath the gauge.
    enabled; that is expected and harmless.
 5. The site is published at `https://<username>.github.io/<repository>/`.
 
-The workflow then runs automatically at 23:17 UTC, Monday to Friday (07:17 Singapore time,
-Tuesday to Saturday). GitHub may start scheduled runs some minutes late. Its daily commit
+The workflow then runs automatically every day at 00:17 UTC (08:17 Singapore time), after
+the US close and after the crypto UTC day closes. On weekends only the crypto figures change. GitHub may start scheduled runs some minutes late. Its daily commit
 also keeps the schedule active; GitHub disables scheduled workflows in public repositories
 after 60 days without activity.
 
@@ -100,11 +103,13 @@ making investment decisions.
 - **Derived measures are the author's construction.** The China/HK Fear & Greed score and
   the headline sentiment scores are simple, transparent heuristics. They are not
   published indices and have not been validated as predictive of returns.
+- **Crypto assets are highly volatile and lightly regulated.** Prices differ between
+  exchanges; the figures shown are from a single venue or aggregator at the UTC daily close.
 - **Past patterns do not predict future results.** RSI thresholds, sentiment extremes and
   similar signals describe conditions; they do not forecast prices.
 - **Third-party data and trademarks.** All market data, index names and trademarks belong
   to their respective owners, including CNN, Cboe, Hang Seng Indexes Company, HKEX, Sina,
-  Eastmoney and Yahoo. This project is not affiliated with, endorsed by or sponsored by
+  Eastmoney, Yahoo, Alternative.me, Kraken and CoinGecko. This project is not affiliated with, endorsed by or sponsored by
   any of them. The MIT License covers this repository's code only, not the data it
   retrieves. Users are responsible for complying with each data provider's terms of use.
 - **Use at your own risk.** The software is provided "as is", without warranty of any

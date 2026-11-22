@@ -34,9 +34,18 @@
         <option value="CN">China / HK Market</option>
         <option value="CRYPTO">Crypto Market</option>
       </select>
+      <div class="flex items-center gap-1"><span class="text-slate-400">Period</span>
+        <div id="tfGroup" class="flex rounded overflow-hidden border border-slate-700" title="Sets the trend chart window and the table's % change column">
+          <button data-tf="1" class="px-2 py-1">1D</button>
+          <button data-tf="7" class="px-2 py-1">7D</button>
+          <button data-tf="30" class="px-2 py-1">30D</button>
+        </div>
+      </div>
       <span class="text-slate-400">Data as of: <span id="lastUpdated" class="mono"></span></span>
     </div>
   </header>
+
+  <section id="glance" class="grid grid-cols-2 md:grid-cols-4 gap-3"></section>
 
   <p id="snapLog" class="src px-1"></p>
 
@@ -52,8 +61,10 @@
           <div id="usScore" class="text-3xl font-bold mono"></div><div id="usZone" class="text-xs font-semibold"></div>
         </div>
       </div>
+      <div class="flex justify-between text-[10px] text-slate-500 px-1 mt-1"><span>0 · Extreme Fear</span><span>50 · Neutral</span><span>Extreme Greed · 100</span></div>
       <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="usMetrics"></div>
-      <p class="src mt-3" id="usSrc"></p>
+      <div id="usComp" class="mt-3 space-y-1"></div>
+      <details class="mt-3"><summary class="src cursor-pointer select-none">Method & sources</summary><p class="src mt-1" id="usSrc"></p></details>
     </div>
     <div class="card p-4" data-market="CN">
       <div class="flex justify-between items-start">
@@ -65,8 +76,10 @@
           <div id="cnScore" class="text-3xl font-bold mono"></div><div id="cnZone" class="text-xs font-semibold"></div>
         </div>
       </div>
+      <div class="flex justify-between text-[10px] text-slate-500 px-1 mt-1"><span>0 · Extreme Fear</span><span>50 · Neutral</span><span>Extreme Greed · 100</span></div>
       <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="cnMetrics"></div>
-      <p class="src mt-3" id="cnSrc"></p>
+      <div id="cnComp" class="mt-3 space-y-1"></div>
+      <details class="mt-3"><summary class="src cursor-pointer select-none">Method & sources</summary><p class="src mt-1" id="cnSrc"></p></details>
     </div>
     <div class="card p-4" data-market="CRYPTO">
       <div class="flex justify-between items-start">
@@ -78,8 +91,9 @@
           <div id="cryptoScore" class="text-3xl font-bold mono"></div><div id="cryptoZone" class="text-xs font-semibold"></div>
         </div>
       </div>
+      <div class="flex justify-between text-[10px] text-slate-500 px-1 mt-1"><span>0 · Extreme Fear</span><span>50 · Neutral</span><span>Extreme Greed · 100</span></div>
       <div class="grid grid-cols-2 gap-2 mt-3 text-sm" id="cryptoMetrics"></div>
-      <p class="src mt-3" id="cryptoSrc"></p>
+      <details class="mt-3"><summary class="src cursor-pointer select-none">Method & sources</summary><p class="src mt-1" id="cryptoSrc"></p></details>
     </div>
   </section>
 
@@ -111,16 +125,7 @@
   <!-- ============ 4. CHARTS ============ -->
   <section class="grid md:grid-cols-2 gap-4">
     <div class="card p-4">
-      <div class="flex justify-between items-center gap-2">
-        <h2 class="font-semibold">Fear & Greed Trend</h2>
-        <div class="flex items-center gap-2 text-xs"><span class="text-slate-400">Period</span>
-          <div id="tfGroup" class="flex rounded overflow-hidden border border-slate-700">
-            <button data-tf="1" class="px-2 py-1">1D</button>
-            <button data-tf="7" class="px-2 py-1">7D</button>
-            <button data-tf="30" class="px-2 py-1">30D</button>
-          </div>
-        </div>
-      </div>
+      <h2 class="font-semibold">Fear & Greed Trend</h2>
       <div class="h-64 mt-2"><canvas id="trendChart"></canvas></div>
       <p class="src mt-2" id="trendNote"></p>
     </div>
@@ -357,33 +362,49 @@ const chgKey = () => state.tf === 1 ? 'chg' : `chg${state.tf}`;
 const chgOf = (e) => e[chgKey()];
 const MKT = { US:['US', 'bg-sky-900/50 text-sky-300'], CN:['CN/HK', 'bg-red-900/40 text-red-300'], CRYPTO:['Crypto', 'bg-violet-900/50 text-violet-300'] };
 const mktLabel = (m) => (MKT[m] || [m])[0];
+const scoreTxt = (v) => v === null || v === undefined ? '—' : String(Math.round(v * 10) / 10);   // one decimal max, same everywhere
 const pct = (v) => v === null || v === undefined ? '' : `<span class="${v >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${v >= 0 ? '+' : ''}${fmt(v)}%</span>`;
+
+/* Labelled 0–100 bars for index components (score coloured by Fear & Greed zone) */
+function compBars(rows) {
+  return rows.map(r => { const z = zone(r.score);
+    return `<div class="flex items-center gap-2 text-[11px]">
+      <span class="w-48 shrink-0 text-slate-400 truncate" title="${r.name}">${r.name}</span>
+      <div class="relative flex-1 h-1.5 rounded bg-slate-800"><div class="absolute inset-y-0 left-0 rounded" style="width:${Math.max(2, r.score)}%;background:${z.color}"></div></div>
+      <span class="mono w-7 text-right">${Math.round(r.score)}</span></div>`; }).join('');
+}
+const CNN_PARTS = {
+  market_momentum_sp500: 'Momentum (S&P vs 125d avg)', stock_price_strength: 'Price strength (52w highs/lows)',
+  stock_price_breadth: 'Breadth (McClellan volume)', put_call_options: 'Put/call options',
+  market_volatility_vix: 'Volatility (VIX vs 50d avg)', junk_bond_demand: 'Junk bond demand', safe_haven_demand: 'Safe-haven demand' };
 
 function renderGauges() {
   const us = DATA_CONFIG.us, cn = DATA_CONFIG.cn;
   const usV = us.fearGreed.value, uz = zone(usV);
   gauge('gaugeUS', usV);
-  $('usScore').textContent = usV ?? '—'; $('usZone').textContent = uz.label; $('usZone').style.color = uz.color;
+  $('usScore').textContent = scoreTxt(usV); $('usZone').textContent = uz.label; $('usZone').style.color = uz.color;
   $('usMetrics').innerHTML =
     metric('CBOE VIX', fmt(us.vix.value), `${pct(us.vix.chgPct)} · ${us.vix.asOf}`, us.vix.src) +
     metric('CBOE equity put/call', fmt(us.putCall.value, 3), `${us.putCall.asOf || ''} ${us.putCall.note || ''}`, us.putCall.src);
-  const comp = us.fearGreed.components ? Object.entries(us.fearGreed.components)
-    .map(([k, c]) => `${k.replace(/_/g, ' ')}: ${Math.round(c.score)} (${c.rating})`).join(' · ') : '';
-  $('usSrc').innerHTML = `${us.fearGreed.label}, ${us.fearGreed.asOf} · ${link(us.fearGreed.src, 'source')}. ${us.fearGreed.note}${comp ? `<br>Components: ${comp}` : ''}`;
+  const comps = us.fearGreed.components || {};
+  $('usComp').innerHTML = compBars(Object.entries(comps).map(([k, c]) => ({ name: CNN_PARTS[k] || k.replace(/_/g, ' '), score: c.score })));
+  $('usSrc').innerHTML = `${us.fearGreed.label}, ${us.fearGreed.asOf} · ${link(us.fearGreed.src, 'source')}. ${us.fearGreed.note}`;
 
   const last = cn.hsiCloses[cn.hsiCloses.length - 1];
   const dd = last.v / cn.hsi52wHigh.value - 1;
-  let score, method;
+  let score, method, parts;
   if (cn.sentiment) {                                   // CNN-style derived score (from update_snapshot.py)
-    score = cn.sentiment.v;
-    method = `${cn.sentiment.method}. Inputs: ${cn.sentiment.parts.map(p => `${p.name} ${p.score.toFixed(0)} × ${p.weight}`).join(', ')}. As of ${cn.sentiment.d} · ${link(cn.sentiment.src, 'CNN method reference')}. Southbound flow shown for context, not scored.`;
-  } else {                                              // built-in fallback (no 5-year history available)
-    const c = computeCnComposite(last.d, last.v); score = c.score;
-    method = `Fallback composite of ${c.parts.length}/2 fresh inputs (${c.parts.map(p => `${p.name} → ${p.score.toFixed(0)}`).join(', ')}); formula in <span class="mono">computeCnComposite()</span>. Run update_snapshot.py for the full CNN-style score.`;
+    score = cn.sentiment.v; parts = cn.sentiment.parts;
+    method = `${cn.sentiment.method}; each bar is that component's 1-year percentile, and the gauge is their average. As of ${cn.sentiment.d} · ${link(cn.sentiment.src, 'CNN method reference')}. Southbound flow shown for context, not scored.`;
+  } else {                                              // built-in fallback (no history available)
+    const c = computeCnComposite(last.d, last.v); score = c.score; parts = c.parts;
+    method = `Fallback composite of ${c.parts.length}/2 fresh inputs; formula in <span class="mono">computeCnComposite()</span>. Run update_snapshot.py for the full CNN-style score.`;
   }
+  state.cnScore = score;
+  $('cnComp').innerHTML = compBars(parts.map(p => ({ name: p.name.replace(' MA, inverted)', ' avg, inv.)').replace(' MA)', ' avg)'), score: p.score })));
   const cz = zone(score);
   gauge('gaugeCN', score);
-  $('cnScore').textContent = Math.round(score); $('cnZone').textContent = cz.label; $('cnZone').style.color = cz.color;
+  $('cnScore').textContent = scoreTxt(score); $('cnZone').textContent = cz.label; $('cnZone').style.color = cz.color;
   const vAge = Math.round((new Date(last.d) - new Date(cn.vhsi.asOf)) / 864e5);
   const sb = cn.southbound;
   const sbVal = sb.fiveDay100m !== undefined ? `${fmt(sb.fiveDay100m, 1)} 亿 (5d)` : `HK$${fmt(sb.valueHKDbn)} bn`;
@@ -399,12 +420,34 @@ function renderGauges() {
 function renderCryptoGauge() {
   const fg = DATA_CONFIG.crypto.fearGreed, z = zone(fg.value);
   gauge('gaugeCRYPTO', fg.value);
-  $('cryptoScore').textContent = fg.value ?? '—'; $('cryptoZone').textContent = z.label; $('cryptoZone').style.color = z.color;
+  $('cryptoScore').textContent = scoreTxt(fg.value); $('cryptoZone').textContent = z.label; $('cryptoZone').style.color = z.color;
   const asset = (t) => DATA_CONFIG.etfs.find(e => e.ticker === t) || {};
   $('cryptoMetrics').innerHTML = ['BTC', 'ETH'].map(t => { const a = asset(t);
-    return metric(a.name || t, a.price === null || a.price === undefined ? '—' : '$' + fmt(a.price, 0),
-      `${a.chg === null || a.chg === undefined ? '' : pct(a.chg) + ' · '}${a.asOf || ''} (UTC close)`, a.src); }).join('');
+    if (a.price === null || a.price === undefined) return metric(a.name || t, '—', 'awaiting next snapshot', a.src);
+    const s = rsiSignal(a.rsi);
+    return metric(a.name || t, '$' + fmt(a.price, 0),
+      `${pct(chgOf(a) ?? a.chg)} ${state.tf}D · RSI <span style="color:${s.color}">${fmt(a.rsi, 1)}</span> · ${a.asOf} UTC close`, a.src); }).join('');
   $('cryptoSrc').innerHTML = `Alternative.me Crypto Fear & Greed Index, ${fg.asOf} (${fg.rating || z.label}) · ${link(fg.src, 'source')}. Daily, combines volatility, volume/momentum, social media, dominance and search trends.`;
+}
+
+function renderGlance() {
+  const card = (m, label, score, sub) => { const z = zone(score);
+    return `<button data-go="${m}" class="card p-3 text-left hover:border-slate-500 transition-colors">
+      <div class="text-[11px] text-slate-400">${label}</div>
+      <div class="flex items-baseline gap-2"><span class="text-2xl font-bold mono">${scoreTxt(score)}</span>
+      <span class="text-xs font-semibold" style="color:${z.color}">${z.label}</span></div>
+      <div class="src">${sub}</div></button>`; };
+  const rsi = DATA_CONFIG.etfs.filter(e => e.rsi !== null && e.rsi !== undefined);
+  const os = rsi.filter(e => e.rsi < 30).map(e => e.ticker), ob = rsi.filter(e => e.rsi > 70).map(e => e.ticker);
+  $('glance').innerHTML =
+    card('US', 'US · CNN Fear & Greed', DATA_CONFIG.us.fearGreed.value, `as of ${DATA_CONFIG.us.fearGreed.asOf}`) +
+    card('CN', 'China/HK · derived', state.cnScore, `as of ${DATA_CONFIG.cn.hsiCloses.at(-1).d}`) +
+    card('CRYPTO', 'Crypto · Alternative.me', DATA_CONFIG.crypto.fearGreed.value, `as of ${DATA_CONFIG.crypto.fearGreed.asOf}`) +
+    `<div class="card p-3"><div class="text-[11px] text-slate-400">14-day RSI across ${rsi.length} assets</div>
+      <div class="text-sm mt-1"><span class="text-emerald-400 font-semibold">${os.length} oversold</span> · <span class="text-rose-400 font-semibold">${ob.length} overbought</span></div>
+      <div class="src">${os.length ? 'Oversold: ' + os.join(', ') : 'None below 30'}${ob.length ? ' · Overbought: ' + ob.join(', ') : ''}</div></div>`;
+  document.querySelectorAll('#glance [data-go]').forEach(b => b.onclick = () => {
+    state.view = state.view === b.dataset.go ? 'all' : b.dataset.go; $('viewSel').value = state.view; renderAll(); });
 }
 
 /* ============================ RENDER: RSI TABLE ============================ */
@@ -552,7 +595,7 @@ function setActive(groupId, attr, val) {
 function renderAll() {
   document.querySelectorAll('[data-market]').forEach(el => el.classList.toggle('hidden-view', state.view !== 'all' && el.dataset.market !== state.view));
   setActive('tfGroup', 'tf', state.tf); setActive('newsFilter', 'f', state.news);
-  renderMode(); renderGauges(); renderCryptoGauge(); renderTable(); renderTrend(); renderRsiChart(); renderNews(); renderSide();
+  renderMode(); renderGauges(); renderCryptoGauge(); renderGlance(); renderTable(); renderTrend(); renderRsiChart(); renderNews(); renderSide();
 }
 
 $('viewSel').onchange = (e) => { state.view = e.target.value; renderAll(); };
